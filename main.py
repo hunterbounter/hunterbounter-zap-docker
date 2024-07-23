@@ -11,7 +11,7 @@ from typing import Optional
 from telemetry import get_server_stats, send_telemetry, send_scan_telemetry
 from zap import (
     create_context, add_site, start_scan, scan_status, scan_results,
-    get_contexts, delete_context, db_results, delete_db_results, active_scans_count, is_zap_online, get_scan_results,
+    get_contexts, delete_context,  active_scans_count, is_zap_online, get_scan_results,
     get_all_scan_results
 )
 
@@ -43,9 +43,6 @@ async def scan_status_endpoint(scan_id: str):
     return scan_status(scan_id)
 
 
-@app.get("/scan_results_db")
-async def scan_results_db_endpoint(url: str):
-    return scan_results(url)
 
 
 @app.get("/scan_results")
@@ -68,14 +65,7 @@ async def delete_context_endpoint(context_name: str):
     return delete_context(context_name)
 
 
-@app.get("/db_results")
-async def db_results_endpoint():
-    return db_results()
 
-
-@app.delete("/db_results")
-async def delete_db_results_endpoint():
-    return delete_db_results()
 
 
 @app.get("/active_scans_count")
