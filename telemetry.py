@@ -41,7 +41,8 @@ def get_host_name():
 def find_command_path(command):
     try:
         result = subprocess.run(['which', command], capture_output=True, text=True)
-         return result.stdout.strip()
+        # Komutun yolunu döndür
+        return result.stdout.strip()
     except Exception as e:
         return f"Hata: {e}"
 
@@ -53,7 +54,8 @@ def get_active_interfaces():
 
 
 def get_cpu_serial():
-     try:
+    # CPU seri numarasını elde etme
+    try:
         with open('/proc/cpuinfo', 'r') as f:
             for line in f:
                 if line.startswith('Serial'):
@@ -95,91 +97,70 @@ def get_disk_status(used_percent):
 
 
 def get_server_stats():
-    hostname = get_host_name()
+    try:
+        hostname = get_host_name()
 
-    ram_usage = psutil.virtual_memory().percent
-    cpu_usage = psutil.cpu_percent()
-    active_interfaces = get_active_interfaces()
-    cpu_serial = get_cpu_serial()
+        ram_usage = psutil.virtual_memory().percent
+        cpu_usage = psutil.cpu_percent()
+        active_interfaces = get_active_interfaces()
+        # Disk kullanımı istatistikleri
+        disk_usage = psutil.disk_usage('/')
 
-    disk_usage = psutil.disk_usage('/')
+        disk_usage_percent = disk_usage.percent
 
-    total_disk_gb = convert_bytes_to_gb(disk_usage.total)
-    used_disk_gb = convert_bytes_to_gb(disk_usage.used)
-    free_disk_gb = convert_bytes_to_gb(disk_usage.free)
-    disk_usage_percent = disk_usage.percent
+        total_scan_count = 0
+        total_scan_response = active_scans_count()
+        logging.info("Total scan response: " + str(total_scan_response))
+        if total_scan_response['success']:
+            total_scan_count = total_scan_response['message']
 
-    total_scan_count = 0
-    total_scan_response = active_scans_count()
-    if total_scan_response['success']:
-        total_scan_count = total_scan_response['message']
+        zap_response = is_zap_online()
 
-    zap_response = is_zap_online()
+        zap_status = "offline"
+        if zap_response['success']:
+            zap_status = "online"
 
-    zap_status = "offline"
-    if zap_response['success']:
-        zap_status = "online"
+        # Sistem uptime
+        uptime = get_uptime()
 
-    # Sistem uptime
-    uptime = get_uptime()
+        stats = {
+            "hostname": hostname,
+            "telemetry_type": "zap",
+            "active_scan_count": total_scan_count,
+            "zap_status": zap_status,
+            "active_interfaces": active_interfaces,
+            "uptime": uptime,
+            "ram_usage": ram_usage,
+            "cpu_usage": cpu_usage,
+            "active_connections": len(psutil.net_connections()),
+            "current_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
 
+        if zap_status == "online":
+            logging.info("Getting targets")
+            target_response = get_targets(total_scan_count, 1)
 
-    ram_status = classify_status(ram_usage, normal_threshold=70, medium_threshold=90)
+            if target_response['success']:
+                logging.info("Targets received")
+                logging.info("Response -> " + str(target_response))
 
+                targets = target_response['data']['targets']
 
-    cpu_status = classify_status(cpu_usage, normal_threshold=50, medium_threshold=80)
+                if targets is not None:
+                    for target in targets:
+                        logging.info(f"Sending scan result for {target}")
+                        if not target.startswith("http://") and not target.startswith("https://"):
+                            target = "http://" + target
 
+                        site = Site(url=target)
 
-    disk_status = get_disk_status(disk_usage_percent)
+                        start_scan_response = start_scan(site)
+                        logging.info(f"Start scan response: {start_scan_response}")
 
-    status = {
-        "RAM Status": ram_status,
-        "CPU Status": cpu_status,
-        "Disk Status": disk_status
-    }
-
-    stats = {
-        "hostname": hostname,
-        "total_scan_results": total_scan_count,
-        "zap_status": zap_status,
-        "cpu_serial": cpu_serial,
-        "active_interfaces": active_interfaces,
-        "uptime": uptime,
-        "ram_usage": ram_usage,
-        "cpu_usage": cpu_usage,
-        "disk_usage": {
-            "total_gb": total_disk_gb,
-            "used_gb": used_disk_gb,
-            "free_gb": free_disk_gb,
-            "usage_percent": disk_usage_percent
-        },
-        "active_connections": len(psutil.net_connections()),
-        "current_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "Status": status
-    }
-
-    if zap_status == "online":
-        logging.info("Getting targets")
-        target_response = get_targets(total_scan_count, 1)
-
-        if target_response['success']:
-            logging.info("Targets received")
-            logging.info("Response -> " + str(target_response))
-
-            targets = target_response['data']['targets']
-
-            if targets is not None:
-                for target in targets:
-                    logging.info(f"Sending scan result for {target}")
-                    if not target.startswith("http://") and not target.startswith("https://"):
-                        target = "http://" + target
-
-                    site = Site(url=target)
-
-                    start_scan_response = start_scan(site)
-                    logging.info(f"Start scan response: {start_scan_response}")
-
-    return stats
+        return stats
+    except Exception as e:
+        print(f"Failed to get server stats: {e}")
+        return {"success": False, "message": str(e)}
 
 
 def get_targets(total_running_scan_count, docker_type):

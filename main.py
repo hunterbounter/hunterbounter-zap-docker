@@ -66,8 +66,6 @@ async def delete_context_endpoint(context_name: str):
 
 
 
-
-
 @app.get("/active_scans_count")
 async def active_scans_count_endpoint():
     return active_scans_count()
